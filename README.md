@@ -23,6 +23,15 @@ VITE_PAYNOW_MERCHANT_EMAIL="your-paynow-merchant@email.com"
 
 Restart the dev server.
 
+### GitHub Pages (so Paynow works on the live site)
+
+Add a repository variable:
+- **Settings → Secrets and variables → Actions → Variables → New repository variable**
+- **Name**: `VITE_PAYNOW_MERCHANT_EMAIL`
+- **Value**: your Paynow merchant email
+
+Then re-run the “Deploy to GitHub Pages” workflow (or push a commit) to rebuild.
+
 ## Deploy to GitHub Pages
 
 This repo includes a workflow at `.github/workflows/deploy.yml` that deploys automatically on pushes to `main`.
