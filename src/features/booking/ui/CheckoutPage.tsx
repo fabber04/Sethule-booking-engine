@@ -1,11 +1,10 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useBooking } from '../BookingProvider'
 import { parseISO, format } from 'date-fns'
-import { buildPaynowLink } from '../../../lib/paynow'
 import { formatMoney } from '../../../lib/money'
 
 const guestSchema = z.object({
@@ -39,12 +38,20 @@ function Field({
 export function CheckoutPage() {
   const nav = useNavigate()
   const { state, dispatch, rooms, pricing, ensureBookingRef, confirm } = useBooking()
+  const [payLoading, setPayLoading] = useState(false)
+  const [payError, setPayError] = useState<string | null>(null)
+  const [lastPollUrl, setLastPollUrl] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem('paynow.pollUrl')
+    } catch {
+      return null
+    }
+  })
+  const [pollInfo, setPollInfo] = useState<string | null>(null)
 
   const selectedRoom = rooms.find((r) => r.id === state.selected?.roomId)
   const checkIn = parseISO(state.search.checkIn)
   const checkOut = parseISO(state.search.checkOut)
-
-  const paynowMerchantEmail = (import.meta.env.VITE_PAYNOW_MERCHANT_EMAIL as string | undefined)?.trim()
 
   const form = useForm<GuestForm>({
     resolver: zodResolver(guestSchema),
@@ -60,25 +67,77 @@ export function CheckoutPage() {
 
   const canContinue = !!selectedRoom && !!state.selected
 
-  useEffect(() => {
-    if (!canContinue) return
-    ensureBookingRef()
-  }, [canContinue, ensureBookingRef, pricing.totalCents])
+  const bookingRef = canContinue ? ensureBookingRef() : state.bookingRef
 
-  const paymentHref = useMemo(() => {
-    if (!paynowMerchantEmail) return undefined
-    if (!state.bookingRef) return undefined
-    const email = form.getValues('email')?.trim()
-    const amount = (pricing.totalCents / 100).toFixed(2)
-    return buildPaynowLink({
-      merchantEmail: paynowMerchantEmail,
-      amount,
-      reference: state.bookingRef,
-      customerEmail: email || undefined,
-      locked: true,
-      additionalInfo: 'Sethule booking (prototype)',
-    })
-  }, [paynowMerchantEmail, pricing.totalCents, form, state.bookingRef])
+  const amountFormatted = useMemo(() => (pricing.totalCents / 100).toFixed(2), [pricing.totalCents])
+
+  async function startPaynow() {
+    if (!bookingRef) return
+    if (!state.guest) {
+      await form.trigger()
+      return
+    }
+
+    setPayError(null)
+    setPayLoading(true)
+    try {
+      const resp = await fetch('/api/paynow/init', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          reference: bookingRef,
+          amount: amountFormatted,
+          authemail: state.guest.email,
+          authphone: state.guest.phone,
+          authname: `${state.guest.firstName} ${state.guest.lastName}`.trim(),
+          additionalinfo: `Sethule booking (${selectedRoom?.name ?? 'room'})`,
+        }),
+      })
+
+      const json = (await resp.json()) as { ok?: boolean; browserUrl?: string; pollUrl?: string; error?: string }
+      if (!resp.ok || !json.ok || !json.browserUrl) {
+        throw new Error(json.error ?? 'Could not initiate Paynow payment')
+      }
+
+      try {
+        if (json.pollUrl) {
+          sessionStorage.setItem('paynow.pollUrl', json.pollUrl)
+          if (bookingRef) sessionStorage.setItem('paynow.reference', bookingRef)
+          setLastPollUrl(json.pollUrl)
+        }
+      } catch {
+        // ignore
+      }
+      window.location.assign(json.browserUrl)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not initiate Paynow payment'
+      setPayError(msg)
+    } finally {
+      setPayLoading(false)
+    }
+  }
+
+  async function pollPaynowOnce() {
+    if (!lastPollUrl) return
+    setPayError(null)
+    setPollInfo(null)
+    setPayLoading(true)
+    try {
+      const resp = await fetch('/api/paynow/poll', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pollUrl: lastPollUrl }),
+      })
+      const json = (await resp.json()) as { ok?: boolean; error?: string; map?: Record<string, string>; raw?: string }
+      if (!resp.ok || !json.ok) throw new Error(json.error ?? 'Poll failed')
+      setPollInfo(`Poll update (prototype). Raw: ${json.raw ?? ''}`)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Poll failed'
+      setPayError(msg)
+    } finally {
+      setPayLoading(false)
+    }
+  }
 
   if (!canContinue) {
     return (
@@ -250,26 +309,38 @@ export function CheckoutPage() {
             <div>
               <div className="text-sm font-semibold">Payment (Paynow)</div>
               <div className="mt-1 text-xs text-neutral-500">
-                This prototype uses a Paynow hosted payment link (works on GitHub Pages — no backend required).
+                Uses Paynow’s <span className="font-mono">Initiate Transaction</span> API via a local backend (
+                <span className="font-mono">booking-engine/server</span>).
               </div>
             </div>
           </div>
 
-          {!paymentHref ? (
-            <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Add your Paynow merchant email in <span className="font-mono">VITE_PAYNOW_MERCHANT_EMAIL</span> to enable
-              the “Pay with Paynow” button.
-            </div>
-          ) : (
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <a
-                className="rounded-xl bg-emerald-600 px-4 py-3 text-center text-sm font-medium text-white hover:bg-emerald-500"
-                href={paymentHref}
-                target="_blank"
-                rel="noreferrer"
+          {payError ? (
+            <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-900">{payError}</div>
+          ) : null}
+
+          {pollInfo ? (
+            <div className="mt-3 rounded-xl bg-neutral-50 px-3 py-2 text-xs text-neutral-800">{pollInfo}</div>
+          ) : null}
+
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                disabled={payLoading || !bookingRef}
+                className="rounded-xl bg-emerald-600 px-4 py-3 text-center text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-600/40"
+                onClick={() => void startPaynow()}
               >
-                Pay with Paynow
-              </a>
+                {payLoading ? 'Starting Paynow…' : `Pay ${formatMoney(pricing.totalCents)} with Paynow`}
+              </button>
+              <button
+                type="button"
+                disabled={!lastPollUrl || payLoading}
+                className="rounded-xl border border-black/10 px-4 py-3 text-sm font-medium hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => void pollPaynowOnce()}
+                title="After paying, you can poll Paynow for status updates (prototype)"
+              >
+                Poll payment status
+              </button>
               <button
                 type="button"
                 className="rounded-xl border border-black/10 px-4 py-3 text-sm font-medium hover:bg-black/5"
@@ -285,10 +356,9 @@ export function CheckoutPage() {
                 Skip payment → Confirm booking
               </button>
             </div>
-          )}
 
           <div className="mt-3 text-xs text-neutral-500">
-            Recommended flow: save guest details → open Paynow → complete payment → return and confirm booking.
+            Recommended flow: save guest details → pay on Paynow → return here → confirm booking.
           </div>
         </div>
       </section>
@@ -301,9 +371,9 @@ export function CheckoutPage() {
             {format(checkIn, 'EEE, d MMM')} → {format(checkOut, 'EEE, d MMM')} • {pricing.nights} night
             {pricing.nights === 1 ? '' : 's'}
           </div>
-          {state.bookingRef ? (
+          {bookingRef ? (
             <div className="mt-2 rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
-              Booking ref (Paynow): <span className="font-mono">{state.bookingRef}</span>
+              Booking ref (Paynow): <span className="font-mono">{bookingRef}</span>
             </div>
           ) : null}
           <div className="mt-3 space-y-2">

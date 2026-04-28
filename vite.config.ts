@@ -6,4 +6,12 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   base: process.env.BASE_PATH ?? '/',
   plugins: [react(), tailwindcss()],
+  server: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_DEV_API_TARGET ?? 'http://localhost:8787',
+        changeOrigin: true,
+      },
+    },
+  },
 })

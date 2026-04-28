@@ -1,8 +1,34 @@
-# Sethule Booking Engine (Prototype)
+# Sethule booking engine (local prototype)
 
-Mobile-first booking engine prototype designed for deployment to **GitHub Pages** and integration by redirecting the existing **“Book Now”** button on `sethulelodge.com`.
+React + Vite frontend with a **local Node API** used for realistic **Paynow “Initiate Transaction”** redirects (secrets stay off the frontend).
 
-## Run locally
+## Prereqs
+
+- Node 20+
+- Your Paynow **Integration ID** + **Integration Key** from the merchant dashboard
+
+## Configure Paynow secrets (backend)
+
+Copy `server/.env.example` → `server/.env` and fill in:
+
+```bash
+PAYNOW_INTEGRATION_ID="123456"
+PAYNOW_INTEGRATION_KEY="your-integration-key"
+PUBLIC_APP_ORIGIN="http://localhost:5173"
+PUBLIC_API_ORIGIN="http://localhost:8787"
+```
+
+## Run (recommended)
+
+Terminal 1 (API):
+
+```bash
+cd booking-engine/server
+npm install
+npm run dev
+```
+
+Terminal 2 (UI):
 
 ```bash
 cd booking-engine
@@ -10,115 +36,9 @@ npm install
 npm run dev
 ```
 
-## Paynow checkout (no backend)
+The UI proxies `/api/*` → `http://localhost:8787` (see `vite.config.ts`).
 
-This prototype uses a **Paynow hosted payment link** (opens in a new tab) for a realistic payment handoff.
+## Notes on realism
 
-1. Use your Paynow merchant email (the email that receives payments on Paynow).
-2. Create `.env.local` in `booking-engine/`:
-
-```bash
-VITE_PAYNOW_MERCHANT_EMAIL="your-paynow-merchant@email.com"
-```
-
-Restart the dev server.
-
-### GitHub Pages (so Paynow works on the live site)
-
-Add a repository variable:
-- **Settings → Secrets and variables → Actions → Variables → New repository variable**
-- **Name**: `VITE_PAYNOW_MERCHANT_EMAIL`
-- **Value**: your Paynow merchant email
-
-Then re-run the “Deploy to GitHub Pages” workflow (or push a commit) to rebuild.
-
-## Deploy to GitHub Pages
-
-This repo includes a workflow at `.github/workflows/deploy.yml` that deploys automatically on pushes to `main`.
-
-Steps:
-- Create a GitHub repo and push this folder.
-- In GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-- Push to `main` and wait for the workflow to finish.
-
-Your Pages URL will look like:
-- `https://<github-user>.github.io/<repo-name>/`
-
-## Integration (agency copy/paste)
-
-Ask your agency to update the existing **Book Now** button link to:
-- `https://<github-user>.github.io/<repo-name>/`
-
-# React + TypeScript + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- The backend calls Paynow’s initiate endpoint with a SHA512 hash and validates hashes on responses.
+- `resulturl` callbacks require Paynow to reach your machine; localhost works best with a tunnel tool for real webhook delivery.

@@ -170,7 +170,7 @@ export function SearchPage() {
           </li>
           <li className="flex gap-2">
             <span className="mt-1 h-1.5 w-1.5 rounded-full bg-black/60" />
-            Stripe test checkout handoff (no backend required)
+            Paynow initiation via local API when you configure Integration ID/key
           </li>
         </ul>
 
