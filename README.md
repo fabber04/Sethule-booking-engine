@@ -10,16 +10,15 @@ npm install
 npm run dev
 ```
 
-## Stripe test-mode checkout (no backend)
+## Paynow checkout (no backend)
 
-This prototype uses a **Stripe Payment Link** (opens in a new tab) for a realistic payment handoff.
+This prototype uses a **Paynow hosted payment link** (opens in a new tab) for a realistic payment handoff.
 
-1. Create a Payment Link in Stripe (test mode).
-2. Copy the Payment Link URL.
-3. Create `.env.local` in `booking-engine/`:
+1. Use your Paynow merchant email (the email that receives payments on Paynow).
+2. Create `.env.local` in `booking-engine/`:
 
 ```bash
-VITE_STRIPE_PAYMENT_LINK="https://buy.stripe.com/..."
+VITE_PAYNOW_MERCHANT_EMAIL="your-paynow-merchant@email.com"
 ```
 
 Restart the dev server.

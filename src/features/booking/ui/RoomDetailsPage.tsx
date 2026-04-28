@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useBooking, formatMoney } from '../BookingProvider'
+import { useBooking } from '../BookingProvider'
+import { formatMoney } from '../../../lib/money'
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (

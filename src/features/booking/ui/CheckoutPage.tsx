@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useBooking, formatMoney } from '../BookingProvider'
+import { useBooking } from '../BookingProvider'
 import { parseISO, format } from 'date-fns'
+import { buildPaynowLink } from '../../../lib/paynow'
+import { formatMoney } from '../../../lib/money'
 
 const guestSchema = z.object({
   firstName: z.string().min(2, 'Please enter a first name'),
@@ -42,7 +44,7 @@ export function CheckoutPage() {
   const checkIn = parseISO(state.search.checkIn)
   const checkOut = parseISO(state.search.checkOut)
 
-  const stripePaymentLink = (import.meta.env.VITE_STRIPE_PAYMENT_LINK as string | undefined)?.trim()
+  const paynowMerchantEmail = (import.meta.env.VITE_PAYNOW_MERCHANT_EMAIL as string | undefined)?.trim()
 
   const form = useForm<GuestForm>({
     resolver: zodResolver(guestSchema),
@@ -59,17 +61,19 @@ export function CheckoutPage() {
   const canContinue = !!selectedRoom && !!state.selected
 
   const paymentHref = useMemo(() => {
-    if (!stripePaymentLink) return undefined
-    try {
-      const url = new URL(stripePaymentLink)
-      const email = form.getValues('email')
-      if (email) url.searchParams.set('prefilled_email', email)
-      url.searchParams.set('client_reference_id', state.confirmed?.reference ?? 'prototype')
-      return url.toString()
-    } catch {
-      return stripePaymentLink
-    }
-  }, [form, state.confirmed?.reference, stripePaymentLink])
+    if (!paynowMerchantEmail) return undefined
+    const email = form.getValues('email')?.trim()
+    const reference = state.confirmed?.reference ?? 'STH-PROTO'
+    const amount = (pricing.totalCents / 100).toFixed(2)
+    return buildPaynowLink({
+      merchantEmail: paynowMerchantEmail,
+      amount,
+      reference,
+      customerEmail: email || undefined,
+      locked: true,
+      additionalInfo: 'Sethule booking (prototype)',
+    })
+  }, [paynowMerchantEmail, pricing.totalCents, form, state.confirmed?.reference])
 
   if (!canContinue) {
     return (
@@ -239,27 +243,27 @@ export function CheckoutPage() {
         <div className="mt-6 rounded-2xl border border-black/10 bg-white p-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-sm font-semibold">Payment (Stripe test mode)</div>
+              <div className="text-sm font-semibold">Payment (Paynow)</div>
               <div className="mt-1 text-xs text-neutral-500">
-                This prototype uses a Stripe Payment Link for a realistic checkout handoff. No server required.
+                This prototype uses a Paynow hosted payment link (works on GitHub Pages — no backend required).
               </div>
             </div>
           </div>
 
           {!paymentHref ? (
             <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Add your Stripe Payment Link in <span className="font-mono">VITE_STRIPE_PAYMENT_LINK</span> to enable the
-              “Pay now” button.
+              Add your Paynow merchant email in <span className="font-mono">VITE_PAYNOW_MERCHANT_EMAIL</span> to enable
+              the “Pay with Paynow” button.
             </div>
           ) : (
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <a
-                className="rounded-xl bg-indigo-600 px-4 py-3 text-center text-sm font-medium text-white hover:bg-indigo-500"
+                className="rounded-xl bg-emerald-600 px-4 py-3 text-center text-sm font-medium text-white hover:bg-emerald-500"
                 href={paymentHref}
                 target="_blank"
                 rel="noreferrer"
               >
-                Pay now (test)
+                Pay with Paynow
               </a>
               <button
                 type="button"
@@ -279,8 +283,7 @@ export function CheckoutPage() {
           )}
 
           <div className="mt-3 text-xs text-neutral-500">
-            Recommended test flow: save guest details → open Stripe Payment Link → complete test payment → return and
-            confirm booking.
+            Recommended flow: save guest details → open Paynow → complete payment → return and confirm booking.
           </div>
         </div>
       </section>

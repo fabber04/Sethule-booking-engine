@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { useBooking, formatMoney } from '../BookingProvider'
+import { useBooking } from '../BookingProvider'
+import { formatMoney } from '../../../lib/money'
 import { format, parseISO } from 'date-fns'
 
 function StepPill({ label, active }: { label: string; active: boolean }) {
