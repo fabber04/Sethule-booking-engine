@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -38,7 +38,7 @@ function Field({
 
 export function CheckoutPage() {
   const nav = useNavigate()
-  const { state, dispatch, rooms, pricing, confirm } = useBooking()
+  const { state, dispatch, rooms, pricing, ensureBookingRef, confirm } = useBooking()
 
   const selectedRoom = rooms.find((r) => r.id === state.selected?.roomId)
   const checkIn = parseISO(state.search.checkIn)
@@ -60,20 +60,25 @@ export function CheckoutPage() {
 
   const canContinue = !!selectedRoom && !!state.selected
 
+  useEffect(() => {
+    if (!canContinue) return
+    ensureBookingRef()
+  }, [canContinue, ensureBookingRef, pricing.totalCents])
+
   const paymentHref = useMemo(() => {
     if (!paynowMerchantEmail) return undefined
+    if (!state.bookingRef) return undefined
     const email = form.getValues('email')?.trim()
-    const reference = state.confirmed?.reference ?? 'STH-PROTO'
     const amount = (pricing.totalCents / 100).toFixed(2)
     return buildPaynowLink({
       merchantEmail: paynowMerchantEmail,
       amount,
-      reference,
+      reference: state.bookingRef,
       customerEmail: email || undefined,
       locked: true,
       additionalInfo: 'Sethule booking (prototype)',
     })
-  }, [paynowMerchantEmail, pricing.totalCents, form, state.confirmed?.reference])
+  }, [paynowMerchantEmail, pricing.totalCents, form, state.bookingRef])
 
   if (!canContinue) {
     return (
@@ -296,6 +301,11 @@ export function CheckoutPage() {
             {format(checkIn, 'EEE, d MMM')} → {format(checkOut, 'EEE, d MMM')} • {pricing.nights} night
             {pricing.nights === 1 ? '' : 's'}
           </div>
+          {state.bookingRef ? (
+            <div className="mt-2 rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
+              Booking ref (Paynow): <span className="font-mono">{state.bookingRef}</span>
+            </div>
+          ) : null}
           <div className="mt-3 space-y-2">
             {pricing.lines.map((l) => (
               <div key={l.label} className="flex items-center justify-between text-sm">

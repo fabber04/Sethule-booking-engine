@@ -36,6 +36,8 @@ export type BookingState = {
   search: BookingSearch
   selected?: SelectedRoom
   guest?: GuestDetails
+  /** Used for Paynow reference before final confirmation/payment reconciliation */
+  bookingRef?: string
   confirmed?: {
     reference: string
     createdAt: string
@@ -47,6 +49,7 @@ type Action =
   | { type: 'search/set'; payload: Partial<BookingSearch> }
   | { type: 'selected/set'; payload: SelectedRoom }
   | { type: 'guest/set'; payload: GuestDetails }
+  | { type: 'bookingRef/set'; payload: string | undefined }
   | { type: 'confirmed/set'; payload: BookingState['confirmed'] }
   | { type: 'reset' }
 
@@ -77,12 +80,14 @@ function reducer(state: BookingState, action: Action): BookingState {
       if (!isAfter(new Date(next.checkOut), new Date(next.checkIn))) {
         next.checkOut = safeIsoDate(addDays(new Date(next.checkIn), 1))
       }
-      return { ...state, search: next }
+      return { ...state, search: next, bookingRef: undefined, confirmed: undefined }
     }
     case 'selected/set':
-      return { ...state, selected: action.payload }
+      return { ...state, selected: action.payload, bookingRef: undefined, confirmed: undefined }
     case 'guest/set':
       return { ...state, guest: action.payload }
+    case 'bookingRef/set':
+      return { ...state, bookingRef: action.payload }
     case 'confirmed/set':
       return { ...state, confirmed: action.payload }
     case 'reset':
@@ -106,6 +111,7 @@ type BookingContextValue = {
   dispatch: React.Dispatch<Action>
   rooms: Room[]
   pricing: Pricing
+  ensureBookingRef: () => string
   confirm: () => { reference: string; totalCents: number }
 }
 
@@ -122,16 +128,24 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
     return out
   }, [])
 
-  const confirm = useCallback(() => {
+  const ensureBookingRef = useCallback(() => {
+    if (state.bookingRef) return state.bookingRef
     const reference = makeReference()
+    dispatch({ type: 'bookingRef/set', payload: reference })
+    return reference
+  }, [dispatch, makeReference, state.bookingRef])
+
+  const confirm = useCallback(() => {
+    const reference = state.bookingRef ?? makeReference()
+    if (!state.bookingRef) dispatch({ type: 'bookingRef/set', payload: reference })
     const createdAt = new Date().toISOString()
     dispatch({ type: 'confirmed/set', payload: { reference, createdAt, totalCents: pricing.totalCents } })
     return { reference, totalCents: pricing.totalCents }
-  }, [dispatch, makeReference, pricing.totalCents])
+  }, [dispatch, makeReference, pricing.totalCents, state.bookingRef])
 
   const value = useMemo<BookingContextValue>(
-    () => ({ state, dispatch, rooms, pricing, confirm }),
-    [state, dispatch, pricing, confirm],
+    () => ({ state, dispatch, rooms, pricing, ensureBookingRef, confirm }),
+    [state, dispatch, pricing, confirm, ensureBookingRef],
   )
 
   return <BookingContext.Provider value={value}>{children}</BookingContext.Provider>
