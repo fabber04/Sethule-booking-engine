@@ -64,11 +64,12 @@ export function CheckoutPage() {
       const url = new URL(stripePaymentLink)
       const email = form.getValues('email')
       if (email) url.searchParams.set('prefilled_email', email)
+      url.searchParams.set('client_reference_id', state.confirmed?.reference ?? 'prototype')
       return url.toString()
     } catch {
       return stripePaymentLink
     }
-  }, [form, stripePaymentLink])
+  }, [form, state.confirmed?.reference, stripePaymentLink])
 
   if (!canContinue) {
     return (
@@ -264,6 +265,10 @@ export function CheckoutPage() {
                 type="button"
                 className="rounded-xl border border-black/10 px-4 py-3 text-sm font-medium hover:bg-black/5"
                 onClick={() => {
+                  if (!state.guest) {
+                    form.trigger()
+                    return
+                  }
                   const { reference } = confirm()
                   nav(`/confirmation?ref=${encodeURIComponent(reference)}`)
                 }}
@@ -272,6 +277,11 @@ export function CheckoutPage() {
               </button>
             </div>
           )}
+
+          <div className="mt-3 text-xs text-neutral-500">
+            Recommended test flow: save guest details → open Stripe Payment Link → complete test payment → return and
+            confirm booking.
+          </div>
         </div>
       </section>
 
@@ -291,6 +301,22 @@ export function CheckoutPage() {
               </div>
             ))}
           </div>
+
+          <details className="mt-4 rounded-xl border border-black/10 bg-neutral-50 px-3 py-2">
+            <summary className="cursor-pointer text-sm font-medium text-neutral-800">
+              Nightly breakdown
+              <span className="ml-2 text-xs font-normal text-neutral-500">(varies by season/weekend)</span>
+            </summary>
+            <div className="mt-3 space-y-2">
+              {pricing.nightly.map((n) => (
+                <div key={n.date} className="flex items-center justify-between text-sm">
+                  <div className="text-neutral-700">{n.label}</div>
+                  <div className="font-medium">{formatMoney(n.amountCents)}</div>
+                </div>
+              ))}
+            </div>
+          </details>
+
           <div className="mt-3 flex items-center justify-between border-t border-black/10 pt-3">
             <div className="text-sm font-semibold">Total</div>
             <div className="text-lg font-semibold">{formatMoney(pricing.totalCents)}</div>

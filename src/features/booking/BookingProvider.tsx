@@ -1,5 +1,14 @@
 import React, { createContext, useContext, useMemo, useReducer } from 'react'
-import { addDays, differenceInCalendarDays, formatISO, isAfter, isValid } from 'date-fns'
+import {
+  addDays,
+  differenceInCalendarDays,
+  format,
+  formatISO,
+  isAfter,
+  isValid,
+  isWeekend,
+  parseISO,
+} from 'date-fns'
 import type { Room } from './mock/rooms'
 import { rooms } from './mock/rooms'
 
@@ -101,6 +110,7 @@ export type PricingLine = { label: string; amountCents: number; help?: string }
 export type Pricing = {
   nights: number
   subtotalCents: number
+  nightly: { date: string; label: string; amountCents: number }[]
   lines: PricingLine[]
   totalCents: number
 }
@@ -119,20 +129,48 @@ export function formatMoney(centsValue: number, currency = 'USD') {
 
 export function computePricing(state: BookingState): Pricing {
   const { checkIn, checkOut, guests, promoCode } = state.search
-  const nights = Math.max(1, differenceInCalendarDays(new Date(checkOut), new Date(checkIn)))
+  const checkInDate = parseISO(checkIn)
+  const checkOutDate = parseISO(checkOut)
+  const nights = Math.max(1, differenceInCalendarDays(checkOutDate, checkInDate))
   const selectedRoom = state.selected ? rooms.find((r) => r.id === state.selected!.roomId) : undefined
 
   const baseNight = selectedRoom?.baseRatePerNight ?? 120
-  const guestSurcharge = Math.max(0, guests.adults - 2) * 10 + Math.max(0, guests.children) * 5
+  const guestSurchargePerNight = Math.max(0, guests.adults - 2) * 10 + Math.max(0, guests.children) * 5
 
   const refundableMultiplier = state.selected?.ratePlan === 'refundable' ? 1.12 : 1
-  const ratePerNight = (baseNight + guestSurcharge) * refundableMultiplier
+
+  // Seasonal multiplier (simple but believable)
+  // - Jun–Aug: peak (+15%)
+  // - Dec: festive (+20%)
+  // - Feb: shoulder (+5%)
+  const seasonalMultiplier = (d: Date) => {
+    const m = d.getMonth() + 1
+    if (m >= 6 && m <= 8) return 1.15
+    if (m === 12) return 1.2
+    if (m === 2) return 1.05
+    return 1
+  }
+
+  const nightly: { date: string; label: string; amountCents: number }[] = []
+  let roomTotalFloat = 0
+  for (let i = 0; i < nights; i++) {
+    const d = addDays(checkInDate, i)
+    const weekendMultiplier = isWeekend(d) ? 1.08 : 1
+    const nightRate =
+      (baseNight + guestSurchargePerNight) * refundableMultiplier * seasonalMultiplier(d) * weekendMultiplier
+    roomTotalFloat += nightRate
+    nightly.push({
+      date: format(d, 'yyyy-MM-dd'),
+      label: format(d, 'EEE, d MMM'),
+      amountCents: cents(nightRate),
+    })
+  }
 
   const extras = state.selected?.extras ?? { breakfast: true, airportShuttle: false, extraBed: 0 }
   const extrasPerNight = (extras.breakfast ? 9 : 0) * (guests.adults + guests.children) + extras.extraBed * 12
   const extrasOneOff = extras.airportShuttle ? 25 : 0
 
-  const roomTotal = cents(ratePerNight * nights)
+  const roomTotal = cents(roomTotalFloat)
   const extrasTotal = cents(extrasPerNight * nights) + cents(extrasOneOff)
 
   const lines: PricingLine[] = [
@@ -158,7 +196,7 @@ export function computePricing(state: BookingState): Pricing {
 
   const totalCents = subtotalCents - discountCents + serviceFeeCents + taxesCents
 
-  return { nights, subtotalCents, lines, totalCents }
+  return { nights, subtotalCents, nightly, lines, totalCents }
 }
 
 type BookingContextValue = {

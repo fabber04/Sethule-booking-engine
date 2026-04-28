@@ -123,6 +123,13 @@ export function ResultsPage() {
                         </div>
                         <button
                           type="button"
+                          className="rounded-xl border border-black/10 px-4 py-2 text-sm font-medium hover:bg-black/5"
+                          onClick={() => nav(`/room/${encodeURIComponent(room.id)}`)}
+                        >
+                          View details
+                        </button>
+                        <button
+                          type="button"
                           className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white hover:bg-black/90"
                           onClick={() => {
                             dispatch({
@@ -137,10 +144,10 @@ export function ResultsPage() {
                                 },
                               },
                             })
-                            nav('/checkout')
+                            nav(`/room/${encodeURIComponent(room.id)}`)
                           }}
                         >
-                          Select & continue
+                          Select rate
                         </button>
                       </div>
                     )}
